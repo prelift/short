@@ -35,27 +35,33 @@ func Int() Generator[int] { return intGen{} }
 
 type intGen struct{}
 
-var intBytes = reflect.TypeOf(int(0)).Size()
+var intBytes = int(reflect.TypeOf(int(0)).Size())
 
-func (intGen) Generate(src io.Reader) (int, error) {
-	// FIXME: should generate negatives too
+func (intGen) Generate(src io.Reader) (res int, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("failed to generate int: %w", err)
+		}
+	}()
+
 	p := make([]byte, intBytes)
 	n, err := src.Read(p)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed read: %w", err)
 	}
-	if n != len(p) {
-		err := fmt.Errorf(
-			"too few bytes read (got %d, want %d): %w",
-			n, len(p), io.ErrNoProgress)
+	if n < len(p) {
+		err = fmt.Errorf("read %d bytes not %d: %w", n, len(p), io.ErrNoProgress)
 		return 0, err
 	}
 
-	out := uint64(0)
-	for _, b := range p {
-		out = out*255 + uint64(b)
+	for i, b := range p {
+		res |= int(b) << ((intBytes - i - 1) * 8)
 	}
-	return int(out), nil
+
+	if res%2 == 0 {
+
+	}
+	return res, nil
 }
 
 func Bool() Generator[bool] { return boolGen{} }

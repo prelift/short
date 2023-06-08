@@ -6,6 +6,8 @@ package short_test
 
 import (
 	"bytes"
+	cryptorand "crypto/rand"
+	"flag"
 	"io"
 	"math/rand"
 	"strconv"
@@ -17,6 +19,18 @@ import (
 
 	"github.com/prelift/short"
 )
+
+var (
+	useCryptoRand = flag.Bool("crypto-rand", false, "set to use crypto/rand.Reader as the randomness source")
+	mrandReader   = rand.New(rand.NewSource(int64(rand.Uint64())))
+)
+
+func rng() io.Reader {
+	if *useCryptoRand {
+		return cryptorand.Reader
+	}
+	return mrandReader
+}
 
 func TestAlways(t *testing.T) {
 	// given
@@ -70,13 +84,13 @@ func TestInt(t *testing.T) {
 			// given
 			const sampleSize = 1000
 			gen := short.Int()
-			rng := rand.New(rand.NewSource(rand.Int63()))
 
 			neg, total := 0, 0
 
 			// where
 			for i := 0; i < 10_000; i++ {
-				n, err := gen.Generate(rng)
+				n, err := gen.Generate(rng())
+				assert.Using(t.Logf).That(theerr.IsNil(err))
 				if err == nil {
 					total++
 					if n < 0 {
@@ -100,30 +114,38 @@ func TestInt(t *testing.T) {
 			// given
 			const sampleSize = 1000
 			gen := short.Int()
-			rng := rand.New(rand.NewSource(rand.Int63()))
 
-			odd, total := 0, 0
+			odd, even, total := 0, 0, 0
 
 			// where
 			for i := 0; i < 10_000; i++ {
-				n, err := gen.Generate(rng)
+				n, err := gen.Generate(rng())
+				assert.Using(t.Logf).That(theerr.IsNil(err))
 				if err == nil {
 					total++
-					if n%2 == 1 {
+					if n%2 == 1 || n%2 == -1 {
 						odd++
+					}
+					if n%2 == 0 {
+						even++
 					}
 				}
 			}
 
 			// then
 			oddRatio := float64(odd) / float64(total)
+			evenRatio := float64(even) / float64(total)
 			assert.
 				Using(t.Errorf).
 				That(total >= 100, "got low sample size (%d)", total).
 				That(
 					0.45 <= oddRatio && oddRatio <= 0.55,
-					"odd number ratio %f outside the  0.5±0.05 range",
-					oddRatio)
+					"odd number ratio %f outside the 0.5±0.05 range",
+					oddRatio).
+				That(
+					0.45 <= evenRatio && evenRatio <= 0.55,
+					"even number ratio %f outside the 0.5±0.05 range",
+					evenRatio)
 		})
 	})
 }
@@ -132,13 +154,12 @@ func SucceedsGivenUnboundedInput[Out any](t *testing.T, newGen func() short.Gene
 	t.Run("SucceedsGivenUnboundedInput", func(t *testing.T) {
 		// given
 		gen := newGen()
-		rng := rand.New(rand.NewSource(rand.Int63()))
 
 		for i := 0; i < 1000; i++ {
 			t.Run(strconv.Itoa(i), func(t *testing.T) {
 
 				// when
-				_, err := gen.Generate(rng)
+				_, err := gen.Generate(rng())
 
 				// then
 				assert.Using(t.Errorf).That(theerr.IsNil(err))
